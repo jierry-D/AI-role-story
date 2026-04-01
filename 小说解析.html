@@ -1,0 +1,1244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>群像叙事 · AI小说工坊</title>
+
+<!--
+  ╔══════════════════════════════════════════════════════════════╗
+  ║              群像叙事 · AI多角色小说创作引擎                  ║
+  ║                                                              ║
+  ║  核心机制：                                                   ║
+  ║  1. 用户创建多个角色，为每个角色编写人物背景设定               ║
+  ║  2. "旁白" AI 负责推进情节、描写环境、制造张力                ║
+  ║  3. 每个"角色" AI 依据自身设定独立扮演，生成台词与动作         ║
+  ║  4. 所有 AI 均通过 Anthropic Claude API 驱动                  ║
+  ║                                                              ║
+  ║  页面结构：左栏（角色列表）| 中栏（故事舞台）| 右栏（档案/记录）║
+  ╚══════════════════════════════════════════════════════════════╝
+-->
+
+<!-- 引入三种字体：
+     Noto Serif SC  → 正文、旁白等文学性文字
+     Noto Sans SC   → UI 界面文字
+     ZCOOL XiaoWei  → 标题、角色名等装饰性汉字 -->
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;600;700&family=Noto+Sans+SC:wght@300;400;500&family=ZCOOL+XiaoWei&display=swap" rel="stylesheet">
+
+<style>
+  /* ══════════════════════════════════════
+     全局 CSS 变量（古风纸张配色系统）
+     ══════════════════════════════════════ */
+  :root {
+    --ink:        #1a1208;               /* 墨色：最深的文字色 */
+    --paper:      #f5f0e8;              /* 纸色：主背景 */
+    --paper2:     #ede8dc;              /* 旧纸色：次级背景（侧栏、输入区） */
+    --sepia:      #8b6914;              /* 棕褐色：次级文字、装饰线 */
+    --gold:       #c9a227;              /* 金色：旁白、强调、高亮 */
+    --gold-light: #e8c84a;              /* 浅金色：hover 状态 */
+    --red:        #8b1a1a;              /* 暗红色：删除等危险操作 */
+    --fade:       #6b5a3e;              /* 褪色：辅助文字、占位符 */
+    --border:     rgba(139,105,20,0.25);  /* 边框：半透明金棕 */
+    --shadow:     rgba(26,18,8,0.15);   /* 阴影 */
+  }
+
+  /* 全局盒模型重置 */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Noto Sans SC', sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    min-height: 100vh;
+    /* 两个径向渐变营造羊皮纸的光晕质感 */
+    background-image:
+      radial-gradient(ellipse at 20% 10%, rgba(201,162,39,0.08) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 90%, rgba(139,26,26,0.05) 0%, transparent 50%);
+  }
+
+  /* ── 顶部导航栏 ── */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(245,240,232,0.95); /* 半透明磨砂效果 */
+    backdrop-filter: blur(8px);
+    position: sticky; top: 0; z-index: 100; /* 固定在顶部，始终可见 */
+  }
+  .logo {
+    font-family: 'ZCOOL XiaoWei', serif;
+    font-size: 22px; color: var(--sepia);
+    letter-spacing: 4px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  /* Logo 左侧的金色圆点装饰 */
+  .logo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); }
+  .header-actions { display: flex; gap: 8px; }
+
+  /* 顶部胶囊形按钮（导出、清空） */
+  .h-btn {
+    padding: 7px 18px; border: 1.5px solid var(--border);
+    border-radius: 20px; background: transparent;
+    color: var(--fade); font-size: 12px; cursor: pointer;
+    font-family: 'Noto Sans SC', sans-serif; transition: all .2s;
+  }
+  .h-btn:hover { border-color: var(--sepia); color: var(--sepia); }
+
+  /* 三栏主布局，占满 header 以下的视口高度 */
+  .app { display: flex; height: calc(100vh - 61px); }
+
+  /* ══════════════════════════════════════
+     左栏：角色列表
+     ══════════════════════════════════════ */
+  .sidebar {
+    width: 270px; flex-shrink: 0; /* 固定宽度，不随内容压缩 */
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    background: var(--paper2);
+  }
+  .sidebar-title {
+    padding: 16px 18px 12px;
+    font-family: 'ZCOOL XiaoWei', serif;
+    font-size: 12px; letter-spacing: 3px; color: var(--fade);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  /* "+" 添加角色按钮（圆形） */
+  .add-btn {
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 1.5px solid var(--sepia);
+    background: transparent; color: var(--sepia);
+    font-size: 15px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all .2s; line-height: 1;
+  }
+  .add-btn:hover { background: var(--sepia); color: var(--paper); }
+
+  /* 角色列表滚动区 */
+  .char-list { flex: 1; overflow-y: auto; padding: 10px; }
+  .char-list::-webkit-scrollbar { width: 3px; }
+  .char-list::-webkit-scrollbar-thumb { background: var(--border); }
+
+  /* 单个角色卡片 */
+  .char-card {
+    border-radius: 10px; padding: 11px 13px; margin-bottom: 7px;
+    cursor: pointer; transition: all .2s;
+    border: 1.5px solid transparent;
+    background: var(--paper); position: relative;
+  }
+  .char-card:hover { border-color: var(--border); }
+
+  /* 旁白角色卡片使用深色主题，区别于普通角色 */
+  .char-card.narrator-card { background: #1a1208; }
+  .char-card.narrator-card .cname { color: var(--gold); }
+  .char-card.narrator-card .crole { color: rgba(201,162,39,0.5); }
+  .char-card.narrator-card .cbio  { color: rgba(201,162,39,0.35); }
+
+  /* 卡片内部：头像 + 姓名行 */
+  .char-head { display: flex; align-items: center; gap: 9px; margin-bottom: 5px; }
+  .cavatar {
+    width: 34px; height: 34px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-family: 'ZCOOL XiaoWei', serif;
+    font-weight: 700; flex-shrink: 0;
+    /* 颜色通过 JS 动态设置（角色专属色） */
+  }
+  .cname { font-size: 14px; font-weight: 500; }
+  .crole { font-size: 11px; color: var(--fade); }
+
+  /* 角色简介：最多显示两行，超出省略 */
+  .cbio {
+    font-size: 11px; color: var(--fade); line-height: 1.6;
+    display: -webkit-box; -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical; overflow: hidden;
+  }
+
+  /* 删除按钮：默认隐藏，hover 卡片时显示 */
+  .cdel {
+    position: absolute; top: 7px; right: 7px;
+    width: 18px; height: 18px; border-radius: 50%;
+    border: none; background: transparent;
+    color: #bbb; font-size: 12px; cursor: pointer;
+    display: none; align-items: center; justify-content: center;
+  }
+  .char-card:hover .cdel { display: flex; }
+  .cdel:hover { background: var(--red); color: white; }
+
+  /* ══════════════════════════════════════
+     中栏：故事舞台（主内容区）
+     ══════════════════════════════════════ */
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* 故事流：所有旁白 + 角色发言的滚动容器 */
+  .story-feed {
+    flex: 1; overflow-y: auto; padding: 28px 36px;
+  }
+  .story-feed::-webkit-scrollbar { width: 4px; }
+  .story-feed::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* 每一条故事条目，带淡入上移动画 */
+  .story-entry { margin-bottom: 26px; animation: fadeUp .35s ease both; }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* 条目头部：头像 + 角色名 + 时间 */
+  .emeta { display: flex; align-items: center; gap: 9px; margin-bottom: 7px; }
+  .eavatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-family: 'ZCOOL XiaoWei', serif; flex-shrink: 0;
+  }
+  .ename { font-size: 13px; font-weight: 500; }
+  .etime { font-size: 11px; color: var(--fade); margin-left: auto; } /* 时间戳靠右 */
+
+  /* 角色发言气泡（左切角，营造对话感） */
+  .ebubble {
+    margin-left: 37px; /* 与头像对齐 */
+    padding: 13px 16px;
+    border-radius: 2px 12px 12px 12px;
+    line-height: 1.9; font-size: 14.5px;
+    font-family: 'Noto Serif SC', serif;
+    /* 背景色和左边框颜色由 JS 动态注入角色专属色 */
+  }
+
+  /* 旁白气泡：使用左侧金线 + 斜体，强调文学性 */
+  .narrator-bubble {
+    margin-left: 0; background: transparent;
+    border-left: 3px solid var(--gold);
+    padding-left: 18px; border-radius: 0;
+    font-style: italic; color: var(--sepia);
+    font-size: 14px; line-height: 1.9;
+  }
+
+  /* 用户"导演指令"气泡：靠右对齐，深色背景 */
+  .user-bubble {
+    background: var(--ink); color: var(--paper);
+    border-radius: 12px 2px 12px 12px; /* 右切角，与角色气泡镜像 */
+    margin-left: auto; max-width: 68%;
+    font-family: 'Noto Sans SC', sans-serif;
+    font-size: 13.5px;
+  }
+
+  /* 故事为空时的引导界面 */
+  .empty-state {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    height: 100%; color: var(--fade); text-align: center; gap: 12px;
+  }
+  .empty-icon { font-size: 52px; opacity: .35; }
+  .empty-ttl { font-family: 'ZCOOL XiaoWei', serif; font-size: 22px; letter-spacing: 4px; }
+  .empty-sub { font-size: 13px; line-height: 1.9; max-width: 300px; opacity: .8; }
+
+  /* ── 底部控制栏 ── */
+  .ctrl-bar {
+    border-top: 1px solid var(--border);
+    padding: 14px 22px; background: var(--paper2);
+  }
+  .ctrl-row { display: flex; gap: 9px; margin-bottom: 9px; align-items: flex-end; }
+  .ctrl-row:last-child { margin-bottom: 0; }
+
+  /* 发言者选择下拉框 */
+  .spk-sel {
+    padding: 8px 12px; border-radius: 8px;
+    border: 1.5px solid var(--border);
+    background: var(--paper); color: var(--ink);
+    font-family: 'Noto Sans SC', sans-serif;
+    font-size: 13px; cursor: pointer; min-width: 115px; height: 42px;
+  }
+  .spk-sel:focus { outline: none; border-color: var(--gold); }
+
+  /* 指令输入框 */
+  .pinput {
+    flex: 1; padding: 10px 14px;
+    border-radius: 10px; border: 1.5px solid var(--border);
+    background: var(--paper); color: var(--ink);
+    font-family: 'Noto Sans SC', sans-serif;
+    font-size: 14px; resize: none; height: 42px;
+    transition: border-color .2s; line-height: 1.4;
+  }
+  .pinput:focus { outline: none; border-color: var(--gold); }
+
+  /* 通用按钮基础样式 */
+  .abtn {
+    padding: 0 20px; border-radius: 10px;
+    border: none; cursor: pointer;
+    font-family: 'Noto Sans SC', sans-serif;
+    font-size: 13px; font-weight: 500;
+    transition: all .2s; height: 42px;
+    display: flex; align-items: center; gap: 6px; white-space: nowrap;
+  }
+  .btn-p { background: var(--ink); color: var(--paper); }   /* 主操作：深色（发送、创建） */
+  .btn-p:hover { background: var(--sepia); }
+  .btn-p:disabled { opacity: .45; cursor: not-allowed; }
+  .btn-g { background: var(--gold); color: var(--ink); font-size: 12px; } /* 金色：自动推进 */
+  .btn-g:hover { background: var(--gold-light); }
+  .btn-g:disabled { opacity: .45; cursor: not-allowed; }
+  .btn-o { background: transparent; color: var(--sepia); border: 1.5px solid var(--border); font-size: 12px; } /* 次级：边框型 */
+  .btn-o:hover { border-color: var(--sepia); }
+
+  /* 三个跳动圆点的加载动画（API 请求中显示） */
+  .ldots span {
+    display: inline-block; width: 5px; height: 5px;
+    border-radius: 50%; background: currentColor; margin: 0 2px;
+    animation: dot .7s infinite;
+  }
+  .ldots span:nth-child(2) { animation-delay: .13s; }
+  .ldots span:nth-child(3) { animation-delay: .26s; }
+  @keyframes dot {
+    0%, 80%, 100% { opacity: .2; transform: scale(.8); }
+    40%           { opacity: 1;  transform: scale(1); }
+  }
+
+  /* ══════════════════════════════════════
+     创建角色弹窗（Modal）
+     ══════════════════════════════════════ */
+  /* 半透明遮罩层，默认不可见 */
+  .overlay {
+    position: fixed; inset: 0; z-index: 200;
+    background: rgba(26,18,8,0.55); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity .2s;
+  }
+  /* 添加 .open 后显示，允许交互 */
+  .overlay.open { opacity: 1; pointer-events: all; }
+  .modal {
+    background: var(--paper); border-radius: 16px;
+    padding: 26px 30px; width: 480px; max-width: 95vw;
+    box-shadow: 0 20px 60px rgba(26,18,8,0.3);
+    transform: translateY(12px); transition: transform .2s; /* 弹出动画 */
+  }
+  .overlay.open .modal { transform: translateY(0); }
+  .mtitle {
+    font-family: 'ZCOOL XiaoWei', serif;
+    font-size: 18px; letter-spacing: 3px;
+    color: var(--sepia); margin-bottom: 18px;
+  }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 11px; color: var(--fade); margin-bottom: 5px; letter-spacing: 1px; }
+  .field input, .field textarea {
+    width: 100%; padding: 9px 13px;
+    border-radius: 8px; border: 1.5px solid var(--border);
+    background: var(--paper2); color: var(--ink);
+    font-family: 'Noto Sans SC', sans-serif; font-size: 13px;
+    transition: border-color .2s;
+  }
+  .field textarea { height: 110px; resize: vertical; line-height: 1.7; }
+  .field input:focus, .field textarea:focus { outline: none; border-color: var(--gold); }
+
+  /* 颜色色板选择器 */
+  .swatch-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .swatch {
+    width: 26px; height: 26px; border-radius: 50%;
+    cursor: pointer; transition: transform .15s;
+    border: 2px solid transparent;
+  }
+  .swatch:hover, .swatch.sel { transform: scale(1.25); border-color: var(--ink); }
+  .mactions { display: flex; gap: 9px; margin-top: 20px; justify-content: flex-end; }
+
+  /* ══════════════════════════════════════
+     右栏：故事记录 + 角色档案
+     ══════════════════════════════════════ */
+  .notes-panel {
+    width: 250px; flex-shrink: 0;
+    border-left: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    background: var(--paper2);
+  }
+  /* Tab 切换按钮组 */
+  .vtabs { display: flex; gap: 2px; padding: 7px; border-bottom: 1px solid var(--border); }
+  .vtab {
+    flex: 1; padding: 6px; font-size: 11px;
+    border: none; background: transparent; cursor: pointer;
+    border-radius: 6px; color: var(--fade); transition: all .15s;
+    font-family: 'Noto Sans SC', sans-serif;
+  }
+  .vtab.on { background: var(--ink); color: var(--paper); } /* 激活态 */
+
+  /* 面板内容区：默认隐藏，添加 .vis 后显示 */
+  .panel-sec { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+  .panel-sec.vis { display: flex; }
+  .panel-title {
+    padding: 14px 18px 10px;
+    font-family: 'ZCOOL XiaoWei', serif;
+    font-size: 12px; letter-spacing: 3px; color: var(--fade);
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-body { flex: 1; overflow-y: auto; padding: 12px; }
+  .panel-body::-webkit-scrollbar { width: 3px; }
+  .panel-body::-webkit-scrollbar-thumb { background: var(--border); }
+
+  /* 故事记录卡片（旁白摘要） */
+  .note-card {
+    padding: 11px 13px; background: var(--paper);
+    border-radius: 8px; margin-bottom: 9px;
+    font-size: 11.5px; line-height: 1.7; color: var(--fade);
+    border-left: 3px solid var(--gold); /* 金线标记旁白 */
+    font-family: 'Noto Serif SC', serif;
+  }
+  .note-ts { font-size: 10px; color: var(--sepia); font-family: 'Noto Sans SC', sans-serif; margin-bottom: 4px; letter-spacing: 1px; }
+  .panel-empty { font-size: 12px; color: var(--fade); text-align: center; padding-top: 36px; line-height: 1.9; }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════
+     顶部导航栏
+     ══════════════════════════════════════ -->
+<header>
+  <div class="logo"><div class="logo-dot"></div>群像叙事</div>
+  <div class="header-actions" style="display:flex;align-items:center;gap:8px">
+    <!--
+      API Key 输入框：
+      - type="password" 隐藏明文，防止旁人窥视
+      - oninput 实时将 key 保存到 localStorage，页面刷新后自动恢复
+    -->
+    <input id="apiKeyInput" type="password" placeholder="粘贴 Anthropic API Key (sk-ant-...)"
+      style="padding:6px 12px;border:1.5px solid var(--border);border-radius:20px;background:var(--paper2);color:var(--ink);font-size:12px;width:280px;outline:none;"
+      oninput="localStorage.setItem('nov_api_key',this.value)"
+    >
+    <button class="h-btn" onclick="exportStory()">导出故事</button>
+    <button class="h-btn" onclick="clearStory()">清空重来</button>
+  </div>
+</header>
+
+<!-- ══════════════════════════════════════
+     三栏主区域
+     ══════════════════════════════════════ -->
+<div class="app">
+
+  <!-- ── 左栏：角色列表 ── -->
+  <div class="sidebar">
+    <div class="sidebar-title">
+      <span>角色列表</span>
+      <button class="add-btn" onclick="openModal()" title="添加角色">+</button>
+    </div>
+    <!-- 角色卡片由 JS 的 renderChars() 函数动态生成 -->
+    <div class="char-list" id="charList"></div>
+  </div>
+
+  <!-- ── 中栏：故事舞台 ── -->
+  <div class="main">
+    <!-- 故事流滚动区，addEntry() 向此处追加条目 -->
+    <div class="story-feed" id="feed">
+      <!-- 初始空状态提示，首次生成内容后由 JS 隐藏 -->
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon">📖</div>
+        <div class="empty-ttl">群像叙事</div>
+        <div class="empty-sub">在左侧添加角色，赋予他们背景与灵魂<br>输入指令，让旁白开启这段故事</div>
+      </div>
+    </div>
+
+    <!-- 底部控制栏 -->
+    <div class="ctrl-bar">
+      <div class="ctrl-row">
+        <!--
+          发言者选择器：
+          - "narrator"  → 仅旁白发言
+          - "auto"      → 旁白 + 随机2个角色自动发言
+          - 角色 ID    → 指定该角色单独发言
+          由 renderChars() 同步更新选项列表
+        -->
+        <select class="spk-sel" id="spkSel">
+          <option value="narrator">📜 旁白推进</option>
+          <option value="auto">🎭 自动选角</option>
+        </select>
+
+        <!-- 导演指令输入框，Enter 发送，Shift+Enter 换行 -->
+        <textarea class="pinput" id="pinput" placeholder="输入旁白指令或角色触发词，回车发送…" rows="1"></textarea>
+
+        <button class="abtn btn-p" id="sendBtn" onclick="doSend()">发送</button>
+      </div>
+      <div class="ctrl-row">
+        <!--
+          自动推进：不需要输入指令，旁白自主发展情节
+          并让所有角色依次响应一轮
+        -->
+        <button class="abtn btn-g" id="autoBtn" onclick="doAutoAdvance()">✦ 自动推进一回合</button>
+        <button class="abtn btn-o" onclick="openModal()">+ 新增角色</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 右栏：故事记录 + 角色档案（Tab 切换） ── -->
+  <div class="notes-panel">
+    <div class="vtabs">
+      <button class="vtab on" onclick="switchPanel('notes',this)">故事记录</button>
+      <button class="vtab"    onclick="switchPanel('chars',this)">角色档案</button>
+    </div>
+
+    <!-- Tab1：情节摘要（旁白内容的精简记录） -->
+    <div class="panel-sec vis" id="panel-notes">
+      <div class="panel-title">情节摘要</div>
+      <div class="panel-body" id="notesList">
+        <div class="panel-empty">故事开始后<br>旁白情节将自动记录于此</div>
+      </div>
+    </div>
+
+    <!-- Tab2：点击角色卡片后展示该角色的完整设定 -->
+    <div class="panel-sec" id="panel-chars">
+      <div class="panel-title">角色详情</div>
+      <div class="panel-body" id="charDetail">
+        <div class="panel-empty">点击左侧角色<br>查看人物档案</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     创建角色弹窗（Modal）
+     ══════════════════════════════════════ -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="mtitle">创建新角色</div>
+    <div class="field"><label>角色名称 *</label><input id="mName" placeholder="如：林清远"></div>
+    <div class="field"><label>身份定位</label><input id="mRole" placeholder="如：落魄书生 / 冷酷侦探 / 江湖侠客"></div>
+    <div class="field">
+      <label>人物背景与性格（越详细越好）</label>
+      <!-- 这段文字会直接注入到 AI 的 system prompt 中，决定角色的扮演质量 -->
+      <textarea id="mBio" placeholder="描述角色的出身、经历、性格特点、说话方式、内心矛盾，以及与其他角色的关系…"></textarea>
+    </div>
+    <div class="field"><label>角色颜色</label><div class="swatch-row" id="swatches"></div></div>
+    <div class="mactions">
+      <button class="abtn btn-o" onclick="closeModal()">取消</button>
+      <button class="abtn btn-p" onclick="saveChar()">创建角色</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     JavaScript 核心逻辑
+     ══════════════════════════════════════ -->
+<script>
+
+/* ─────────────────────────────────────────
+   全局常量
+───────────────────────────────────────── */
+const API   = "https://api.anthropic.com/v1/messages"; // Anthropic API 端点
+const MODEL = "claude-sonnet-4-20250514";              // 使用的模型版本
+
+// 角色可选颜色池（10种古风色调）
+const COLORS = [
+  "#8b6914", // 赭金
+  "#8b1a1a", // 深红
+  "#1a4a8b", // 青蓝
+  "#2d7a3a", // 松绿
+  "#6b4a8b", // 紫罗
+  "#8b4a2d", // 赤棕
+  "#2d7a7a", // 青碧
+  "#8b7a2d", // 橄榄
+  "#4a6b8b", // 石青
+  "#8b2d6b"  // 玫瑰红
+];
+
+/* ─────────────────────────────────────────
+   页面加载时恢复已保存的 API Key
+   用户上次输入的 key 存在 localStorage 中，刷新不丢失
+───────────────────────────────────────── */
+window.addEventListener("DOMContentLoaded", () => {
+  const saved = localStorage.getItem("nov_api_key");
+  if (saved) document.getElementById("apiKeyInput").value = saved;
+});
+
+/* ─────────────────────────────────────────
+   全局状态变量
+───────────────────────────────────────── */
+
+// chars：角色数组，第一个元素永远是"旁白"（isNarrator: true）
+// 每个角色对象的结构：{ id, name, role, bio, color, isNarrator? }
+let chars = [{
+  id:         "narrator",
+  name:       "旁白",
+  role:       "全知叙述者",
+  bio:        "全知旁白与故事导演，掌控场景、推进情节、渲染氛围。",
+  color:      "#c9a227",
+  isNarrator: true   // 标记为旁白，区别于普通角色（不可删除、样式特殊）
+}];
+
+// log：完整故事日志，保存所有发言记录，用于：
+//  1. ctx() 函数构建历史上下文，喂给 AI
+//  2. exportStory() 导出为文本文件
+// 每条记录格式：{ speaker: "角色ID", content: "发言内容", time: "HH:MM" }
+let log = [];
+
+// notes：旁白情节摘要列表（仅保存旁白内容的前90字）
+// 显示在右侧"故事记录"面板，帮助用户快速回顾剧情走向
+let notes = [];
+
+// busy：API 请求锁，防止用户在请求进行中重复点击发送
+let busy = false;
+
+// selColor：创建角色弹窗中当前选中的颜色
+let selColor = COLORS[0];
+
+
+/* ═══════════════════════════════════════════
+   角色管理模块
+   负责：渲染角色列表、删除角色、展示角色详情
+═══════════════════════════════════════════ */
+
+/**
+ * renderChars()
+ * 重新渲染左侧角色列表，并同步更新底部"发言者"下拉选择器。
+ * 每次 chars 数组发生变化（添加/删除角色）后都需要调用此函数。
+ */
+function renderChars() {
+  const el = document.getElementById("charList");
+  el.innerHTML = ""; // 清空旧内容，重新渲染
+
+  chars.forEach(c => {
+    const d = document.createElement("div");
+    // 旁白卡片额外加 narrator-card 类，使用深色主题
+    d.className = "char-card" + (c.isNarrator ? " narrator-card" : "");
+    d.innerHTML = `
+      <div class="char-head">
+        <!-- 头像：取角色名第一个字，背景色为角色专属色的 13% 透明度 -->
+        <div class="cavatar" style="background:${c.color}22;color:${c.color}">${c.name[0]}</div>
+        <div>
+          <div class="cname">${c.name}</div>
+          <div class="crole">${c.role}</div>
+        </div>
+      </div>
+      <!-- 角色简介（最多显示两行） -->
+      <div class="cbio">${c.bio}</div>
+      <!-- 普通角色才显示删除按钮，旁白不可删除 -->
+      ${c.isNarrator ? "" : `<button class="cdel" onclick="delChar('${c.id}',event)">×</button>`}
+    `;
+    // 点击整张卡片 → 切换右栏到"角色档案"并展示该角色详情
+    d.onclick = () => showCharDetail(c);
+    el.appendChild(d);
+  });
+
+  // 同步更新底部"发言者"下拉选项
+  const sel = document.getElementById("spkSel");
+  const cur = sel.value; // 记住当前选中的值，更新后尝试恢复
+
+  sel.innerHTML = `
+    <option value="narrator">📜 旁白推进</option>
+    <option value="auto">🎭 自动选角</option>
+  `;
+  // 为每个非旁白角色动态添加一个选项
+  chars.filter(c => !c.isNarrator).forEach(c => {
+    sel.innerHTML += `<option value="${c.id}">${c.name} 开口说话</option>`;
+  });
+  // 尝试恢复之前选中的选项（新增角色后不重置已有选择）
+  if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+}
+
+/**
+ * delChar(id, e)
+ * 删除指定 ID 的角色，需用户二次确认。
+ *
+ * @param {string} id - 要删除的角色唯一 ID
+ * @param {Event}  e  - 点击事件，需要 stopPropagation 防止
+ *                      触发父元素卡片的 showCharDetail
+ */
+function delChar(id, e) {
+  e.stopPropagation(); // 阻止冒泡，避免同时触发卡片点击
+  if (!confirm("确定删除这个角色？")) return;
+  chars = chars.filter(c => c.id !== id); // 从数组中移除
+  renderChars(); // 重新渲染列表
+}
+
+/**
+ * showCharDetail(c)
+ * 在右侧"角色档案"面板展示指定角色的完整设定信息。
+ * 自动切换到"角色档案"Tab。
+ *
+ * @param {Object} c - 角色对象
+ */
+function showCharDetail(c) {
+  switchPanel("chars", document.querySelectorAll(".vtab")[1]); // 切换到第二个 Tab
+  document.getElementById("charDetail").innerHTML = `
+    <div style="text-align:center;padding:18px 0 14px">
+      <!-- 大号头像（圆形） -->
+      <div style="width:56px;height:56px;border-radius:50%;background:${c.color}22;color:${c.color};
+                  font-size:24px;font-family:'ZCOOL XiaoWei',serif;display:flex;align-items:center;
+                  justify-content:center;margin:0 auto 10px">${c.name[0]}</div>
+      <div style="font-family:'ZCOOL XiaoWei',serif;font-size:17px;letter-spacing:2px">${c.name}</div>
+      <div style="font-size:11px;color:var(--fade);margin-top:4px">${c.role}</div>
+    </div>
+    <!-- 角色背景全文，左边框使用角色专属色 -->
+    <div style="font-size:12px;line-height:1.9;color:var(--fade);font-family:'Noto Serif SC',serif;
+                padding:12px;background:var(--paper);border-radius:8px;border-left:3px solid ${c.color}">${c.bio}</div>
+  `;
+}
+
+
+/* ═══════════════════════════════════════════
+   弹窗模块（创建角色）
+   负责：打开/关闭弹窗、渲染颜色色板、保存新角色
+═══════════════════════════════════════════ */
+
+/**
+ * openModal()
+ * 打开"创建新角色"弹窗。
+ * 随机预选一个颜色，并清空上次留下的表单内容。
+ */
+function openModal() {
+  selColor = COLORS[Math.floor(Math.random() * COLORS.length)]; // 随机预选颜色
+  buildSwatches(); // 渲染色板（高亮预选色）
+  ["mName", "mRole", "mBio"].forEach(id => document.getElementById(id).value = ""); // 清空表单
+  document.getElementById("overlay").classList.add("open"); // 显示遮罩 + 弹窗
+  setTimeout(() => document.getElementById("mName").focus(), 100); // 延迟聚焦（等动画完成）
+}
+
+/**
+ * closeModal()
+ * 关闭"创建新角色"弹窗。
+ */
+function closeModal() {
+  document.getElementById("overlay").classList.remove("open");
+}
+
+/**
+ * buildSwatches()
+ * 在弹窗中渲染颜色色板，当前选中的颜色（selColor）会放大高亮显示。
+ */
+function buildSwatches() {
+  const el = document.getElementById("swatches");
+  el.innerHTML = "";
+  COLORS.forEach(c => {
+    const s = document.createElement("div");
+    s.className = "swatch" + (c === selColor ? " sel" : ""); // 高亮已选中色
+    s.style.background = c;
+    s.onclick = () => {
+      selColor = c; // 更新选中颜色
+      // 先全部取消高亮，再高亮当前点击的那个
+      el.querySelectorAll(".swatch").forEach(x => x.classList.remove("sel"));
+      s.classList.add("sel");
+    };
+    el.appendChild(s);
+  });
+}
+
+/**
+ * saveChar()
+ * 读取弹窗中的表单数据，创建新角色对象并加入 chars 数组。
+ * 角色名必填，其余字段有默认值兜底。
+ */
+function saveChar() {
+  const name = document.getElementById("mName").value.trim();
+  if (!name) { alert("请输入角色名称"); return; }
+
+  chars.push({
+    id:    "c" + Date.now(), // 用时间戳生成唯一 ID（足够避免碰撞）
+    name,
+    role:  document.getElementById("mRole").value.trim() || "角色",        // 默认身份
+    bio:   document.getElementById("mBio").value.trim()  || "暂无背景设定", // 默认简介
+    color: selColor
+  });
+
+  renderChars(); // 更新左侧角色列表和发言者下拉框
+  closeModal();
+
+  // 如果空状态提示还在，隐藏它
+  document.getElementById("emptyState") &&
+    (document.getElementById("emptyState").style.display = "none");
+}
+
+
+/* ═══════════════════════════════════════════
+   故事显示模块
+   负责：向故事流追加各类内容条目、记录情节摘要
+═══════════════════════════════════════════ */
+
+/**
+ * addEntry(speakerId, text, isUser)
+ * 向中栏故事流追加一条新内容。
+ * 根据发言者类型（用户指令 / 旁白 / 角色）渲染不同的气泡样式。
+ * 同时将内容写入全局 log 数组。
+ *
+ * @param {string}  speakerId - 发言者 ID（"narrator"、角色id、"user_dir"）
+ * @param {string}  text      - 发言内容（HTML 字符串，已由 AI 生成）
+ * @param {boolean} isUser    - 是否为用户的"导演指令"（靠右深色气泡）
+ */
+function addEntry(speakerId, text, isUser = false) {
+  const c    = chars.find(x => x.id === speakerId) || chars[0]; // 找不到则回退到旁白
+  const feed = document.getElementById("feed");
+  const es   = document.getElementById("emptyState");
+
+  if (es) es.style.display = "none"; // 首条内容时隐藏空状态提示
+
+  // 格式化时间戳（HH:MM）
+  const now = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+  const d = document.createElement("div");
+  d.className = "story-entry"; // 带 fadeUp 动画
+
+  if (isUser) {
+    // ── 用户导演指令：靠右、深色气泡 ──
+    d.innerHTML = `
+      <div class="emeta" style="justify-content:flex-end">
+        <span class="etime">${now}</span>
+        <span class="ename" style="color:var(--sepia)">导演指令</span>
+      </div>
+      <div class="ebubble user-bubble">${text}</div>`;
+
+  } else if (speakerId === "narrator") {
+    // ── 旁白：金色 📜 图标 + 左金线斜体气泡 ──
+    d.innerHTML = `
+      <div class="emeta">
+        <div class="eavatar" style="background:#1a1208;color:var(--gold)">📜</div>
+        <span class="ename" style="color:var(--gold);font-family:'ZCOOL XiaoWei',serif;letter-spacing:2px">旁白</span>
+        <span class="etime">${now}</span>
+      </div>
+      <div class="narrator-bubble">${text}</div>`;
+
+  } else {
+    // ── 普通角色：专属色头像 + 半透明彩色气泡 ──
+    // ${c.color}10 → 角色色的约 6% 透明度（气泡背景）
+    // ${c.color}44 → 角色色的约 27% 透明度（左边框）
+    d.innerHTML = `
+      <div class="emeta">
+        <div class="eavatar" style="background:${c.color}22;color:${c.color}">${c.name[0]}</div>
+        <span class="ename" style="color:${c.color}">${c.name}</span>
+        <span class="etime">${now}</span>
+      </div>
+      <div class="ebubble" style="background:${c.color}10;border-left:3px solid ${c.color}44">${text}</div>`;
+  }
+
+  feed.appendChild(d);
+  feed.scrollTop = feed.scrollHeight; // 自动滚动到最新内容
+
+  // 写入全局日志（用于上下文构建和导出）
+  log.push({ speaker: speakerId, content: text, time: now });
+}
+
+/**
+ * addNote(text)
+ * 将旁白内容的前90字作为情节摘要追加到右侧"故事记录"面板。
+ * 列表按时间倒序排列（最新的显示在最上方）。
+ *
+ * @param {string} text - 旁白全文
+ */
+function addNote(text) {
+  // 截取前90字，超长则加省略号
+  const short = text.slice(0, 90) + (text.length > 90 ? "…" : "");
+  const now   = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+  notes.push({ text: short, time: now });
+
+  // 倒序渲染，最新摘要在最上方
+  const el = document.getElementById("notesList");
+  el.innerHTML = notes.slice().reverse().map(n =>
+    `<div class="note-card"><div class="note-ts">${n.time}</div>${n.text}</div>`
+  ).join("");
+}
+
+
+/* ═══════════════════════════════════════════
+   Claude API 调用模块
+   负责：与 Anthropic API 通信，获取 AI 生成的文字
+═══════════════════════════════════════════ */
+
+/**
+ * claude(system, msgs)
+ * 向 Anthropic Claude API 发送一次请求，返回模型生成的文字。
+ *
+ * @param {string} system - System prompt：定义 AI 在这次调用中扮演的角色和职责
+ * @param {Array}  msgs   - 对话消息数组，格式：[{ role: "user"|"assistant", content: "..." }]
+ * @returns {Promise<string>} 模型返回的文字内容
+ * @throws {Error} API Key 未填写、网络错误、或 API 返回错误时抛出
+ */
+async function claude(system, msgs) {
+  // 优先读取输入框中的实时值，其次尝试从 localStorage 恢复
+  const apiKey = document.getElementById("apiKeyInput").value.trim()
+               || localStorage.getItem("nov_api_key")
+               || "";
+  if (!apiKey) throw new Error("请先在顶部输入 Anthropic API Key");
+
+  const r = await fetch(API, {
+    method: "POST",
+    headers: {
+      "Content-Type":  "application/json",
+      "x-api-key":     apiKey,          // Anthropic 鉴权头
+      "anthropic-version": "2023-06-01", // API 版本声明（必须）
+      // 允许浏览器直接调用 Anthropic API（默认 API 不允许跨域，此头绕过限制）
+      "anthropic-dangerous-direct-browser-access": "true"
+    },
+    body: JSON.stringify({
+      model:      MODEL,
+      max_tokens: 1000, // 单次最大生成 token 数（约700汉字）
+      system,           // 角色/职责的系统级定义
+      messages:   msgs  // 本轮对话消息（含历史上下文）
+    })
+  });
+
+  if (!r.ok) {
+    // 尝试解析错误体，给出更具体的错误提示
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error?.message || "API 错误 " + r.status);
+  }
+
+  const d = await r.json();
+  // API 返回的 content 是数组，取第一个 text 类型的块
+  return d.content?.[0]?.text || "";
+}
+
+
+/* ─────────────────────────────────────────
+   上下文构建辅助函数
+───────────────────────────────────────── */
+
+/**
+ * ctx()
+ * 从全局故事日志中取最近18条，格式化为纯文本"故事进展"。
+ * 作为上下文注入 AI 的 user message，让 AI 了解当前剧情状态。
+ *
+ * 输出示例：
+ *   【旁白】秋雨连绵，长街寂寥……
+ *   【苏清辞】我无路可退。
+ *   【燕七】那就跟我走。
+ *
+ * @returns {string} 格式化后的近期故事文本
+ */
+function ctx() {
+  return log.slice(-18).map(e => {
+    const c = chars.find(x => x.id === e.speaker);
+    return `【${c?.name || "旁白"}】${e.content}`;
+  }).join("\n\n");
+}
+
+/**
+ * narratorSys()
+ * 生成"旁白 AI"的 system prompt。
+ * 包含：所有角色的简介列表 + 旁白的职责说明。
+ * 每次调用 API 时实时生成，以包含最新的角色设定。
+ *
+ * @returns {string} 旁白的 system prompt
+ */
+function narratorSys() {
+  // 拼接所有非旁白角色的简介（旁白需要知道每个角色是谁）
+  const cl = chars
+    .filter(c => !c.isNarrator)
+    .map(c => `· ${c.name}（${c.role}）：${c.bio}`)
+    .join("\n");
+
+  return `你是这部小说的全知旁白与故事导演。
+
+【角色概况】
+${cl || "（尚无角色）"}
+
+【职责】
+1. 用凝练优美的文学语言描述场景、推进情节
+2. 渲染情绪氛围，制造戏剧张力
+3. 适时引出角色互动与冲突
+4. 回复控制在120字以内，简洁有力
+
+只输出旁白正文，不加任何说明标签。`;
+}
+
+/**
+ * charSys(c)
+ * 生成指定角色的 system prompt。
+ * 包含：该角色的详细设定、其他角色的简介、角色扮演规范。
+ * 不同角色调用此函数会得到完全不同的 system prompt，
+ * 确保每个 AI 实例只"知道自己的身份"。
+ *
+ * @param {Object} c - 需要生成 prompt 的角色对象
+ * @returns {string} 该角色的 system prompt
+ */
+function charSys(c) {
+  // 其他角色的简短列表（帮助 AI 知道对手角色的名字和定位）
+  const others = chars
+    .filter(x => !x.isNarrator && x.id !== c.id)
+    .map(x => `· ${x.name}（${x.role}）`)
+    .join("\n");
+
+  return `你正在完全扮演小说角色【${c.name}】。
+
+【你的设定】
+姓名：${c.name}
+身份：${c.role}
+背景：${c.bio}
+
+【其他角色】
+${others || "（暂无）"}
+
+【扮演要求】
+· 完全沉浸角色，第一人称行事
+· 语气、措辞符合角色身份
+· 简短有力，不超过100字
+· 只输出角色的话语或动作，无元信息`;
+}
+
+
+/* ═══════════════════════════════════════════
+   故事推进核心逻辑
+   这是整个工具最重要的部分，负责驱动 AI 按策略生成内容
+═══════════════════════════════════════════ */
+
+/**
+ * doSend()
+ * 用户点击"发送"按钮或在输入框按 Enter 时触发。
+ * 读取用户填写的指令，以"导演指令"气泡显示后，
+ * 调用 gen() 按选定发言者模式驱动 AI。
+ */
+async function doSend() {
+  if (busy) return; // 请求进行中，拒绝重复提交
+  const txt = document.getElementById("pinput").value.trim();
+  const spk = document.getElementById("spkSel").value;
+  if (!txt) return; // 空输入直接忽略
+
+  document.getElementById("pinput").value = ""; // 清空输入框
+  addEntry("user_dir", txt, true);              // 显示用户指令（深色气泡靠右）
+  await gen(spk, txt);
+}
+
+/**
+ * gen(spk, directive)
+ * 核心生成函数。根据选中的发言者模式调用不同策略。
+ *
+ * 三种模式：
+ *  ① "narrator" → 仅旁白 AI 发言
+ *  ② "auto"     → 旁白先发言，再随机抽取 ≤2 个角色依次响应
+ *  ③ 角色 ID   → 直接让指定角色 AI 发言（不经过旁白）
+ *
+ * @param {string} spk       - 发言者标识（"narrator" / "auto" / 角色ID）
+ * @param {string} directive - 用户的导演指令文字
+ */
+async function gen(spk, directive) {
+  if (busy) return;
+  busy = true;
+  setLoading(true); // 禁用按钮 + 显示加载动画
+
+  try {
+    // 构建故事历史前缀（有内容则拼接，否则留空）
+    const c0   = ctx();
+    const hist = c0 ? `【故事进展】\n${c0}\n\n` : "";
+
+    if (spk === "narrator") {
+      /* ── 模式①：旁白单独推进 ──
+         直接让旁白 AI 响应用户指令，生成叙事内容 */
+      const r = await claude(
+        narratorSys(),
+        [{ role: "user", content: `${hist}【导演】${directive}\n\n请以旁白身份推进故事。` }]
+      );
+      addEntry("narrator", r);
+      addNote(r); // 旁白内容同步写入右侧情节摘要
+
+    } else if (spk === "auto") {
+      /* ── 模式②：自动选角（旁白 + 随机2角色）──
+         先让旁白铺垫场景，再随机挑选2个角色响应 */
+      const nc = chars.filter(c => !c.isNarrator); // 所有非旁白角色
+      if (!nc.length) { addEntry("narrator", "（请先添加角色）"); return; }
+
+      // 第一步：旁白推进情节、搭建场景
+      const rn = await claude(
+        narratorSys(),
+        [{ role: "user", content: `${hist}【导演】${directive}\n\n推进情节并自然引出角色互动。` }]
+      );
+      addEntry("narrator", rn);
+      addNote(rn);
+
+      // 第二步：随机选最多2个角色依次响应
+      // 随机洗牌后取前2个，角色数量不足2时取全部
+      const picks = [...nc].sort(() => Math.random() - .5).slice(0, Math.min(2, nc.length));
+      for (const c of picks) {
+        await sleep(350); // 角色间适当延迟，营造"思考"的节奏感
+        const r = await claude(
+          charSys(c),
+          // 注意这里重新调用 ctx()，包含了刚才旁白发言的最新上下文
+          [{ role: "user", content: `【故事进展】\n${ctx()}\n\n${c.name}的反应是？` }]
+        );
+        addEntry(c.id, r);
+      }
+
+    } else {
+      /* ── 模式③：指定角色单独发言 ──
+         直接让选中的角色 AI 响应用户指令 */
+      const c = chars.find(x => x.id === spk);
+      if (!c) return;
+      const r = await claude(
+        charSys(c),
+        [{ role: "user", content: `${hist}【导演】${directive}\n\n${c.name}的回应是？` }]
+      );
+      addEntry(c.id, r);
+    }
+
+  } catch (e) {
+    // 错误以旁白样式显示在故事流中，方便定位问题（如 API Key 错误、网络问题）
+    addEntry("narrator", `⚠ 出错：${e.message}`);
+  } finally {
+    // 无论成功或失败，都释放锁并恢复按钮状态
+    busy = false;
+    setLoading(false);
+  }
+}
+
+/**
+ * doAutoAdvance()
+ * 一键"自动推进一回合"：无需用户输入任何指令。
+ * 与 gen("auto", ...) 的区别：
+ *  - 这里让"所有角色"全部依次响应（而非随机2个）
+ *  - 旁白自主决定情节走向（无用户指令约束）
+ * 适合故事陷入停滞时主动推动剧情发展。
+ */
+async function doAutoAdvance() {
+  if (busy) return;
+  if (chars.filter(c => !c.isNarrator).length === 0) {
+    alert("请先添加至少一个角色");
+    return;
+  }
+
+  busy = true;
+  setLoading(true);
+
+  try {
+    const c0   = ctx();
+    // 故事还没开始时给旁白一个"起点"提示
+    const hist = c0 ? `【故事进展】\n${c0}\n\n` : "（故事刚开始）\n\n";
+
+    // 第一步：旁白自主制造情节转折
+    const rn = await claude(
+      narratorSys(),
+      [{ role: "user", content: `${hist}请推进故事，制造一个情节转折或场景切换，带出角色互动。` }]
+    );
+    addEntry("narrator", rn);
+    addNote(rn);
+
+    // 第二步：所有非旁白角色全部依次响应
+    for (const c of chars.filter(x => !x.isNarrator)) {
+      await sleep(380); // 每个角色之间留出间隔，避免内容一次性涌出
+      const r = await claude(
+        charSys(c),
+        [{ role: "user", content: `【故事进展】\n${ctx()}\n\n${c.name}此刻的反应？` }]
+      );
+      addEntry(c.id, r);
+    }
+
+  } catch (e) {
+    addEntry("narrator", `⚠ 出错：${e.message}`);
+  } finally {
+    busy = false;
+    setLoading(false);
+  }
+}
+
+
+/* ═══════════════════════════════════════════
+   UI 辅助功能
+═══════════════════════════════════════════ */
+
+/**
+ * setLoading(on)
+ * 切换按钮的加载状态：
+ * - on=true  → 禁用"发送"和"自动推进"按钮，发送按钮显示三点跳动动画
+ * - on=false → 恢复两个按钮为可点击状态，恢复"发送"文字
+ *
+ * @param {boolean} on - true=进入加载状态，false=退出加载状态
+ */
+function setLoading(on) {
+  const sb = document.getElementById("sendBtn");
+  const ab = document.getElementById("autoBtn");
+  if (on) {
+    sb.disabled = ab.disabled = true;
+    sb.innerHTML = `<span class="ldots"><span></span><span></span><span></span></span>`;
+  } else {
+    sb.disabled = ab.disabled = false;
+    sb.textContent = "发送";
+  }
+}
+
+/**
+ * clearStory()
+ * 清空所有故事内容，恢复初始空状态。
+ * 注意：角色列表不受影响，仍然保留。
+ */
+function clearStory() {
+  if (log.length && !confirm("确定清空所有故事内容？")) return;
+  log   = []; // 清空故事日志
+  notes = []; // 清空情节摘要
+  // 重置故事流为初始空状态 HTML
+  document.getElementById("feed").innerHTML = `
+    <div class="empty-state" id="emptyState">
+      <div class="empty-icon">📖</div>
+      <div class="empty-ttl">群像叙事</div>
+      <div class="empty-sub">在左侧添加角色，赋予他们背景与灵魂<br>输入指令，让旁白开启这段故事</div>
+    </div>`;
+  // 重置情节摘要面板
+  document.getElementById("notesList").innerHTML =
+    `<div class="panel-empty">故事开始后<br>旁白情节将自动记录于此</div>`;
+}
+
+/**
+ * exportStory()
+ * 将全部故事日志格式化后导出为 .txt 文件，触发浏览器下载。
+ * 导出格式：每段发言之间用 "---" 分隔线隔开，便于阅读。
+ */
+function exportStory() {
+  if (!log.length) { alert("故事还是空白的"); return; }
+
+  const txt = log.map(e => {
+    const c = chars.find(x => x.id === e.speaker);
+    return `【${c?.name || "旁白"}】\n${e.content}`;
+  }).join("\n\n---\n\n");
+
+  // 创建临时 <a> 标签模拟下载，用完即销毁
+  const a = document.createElement("a");
+  a.href     = URL.createObjectURL(new Blob([txt], { type: "text/plain;charset=utf-8" }));
+  a.download = `群像叙事_${new Date().toLocaleDateString("zh-CN")}.txt`;
+  a.click();
+}
+
+/**
+ * switchPanel(name, btn)
+ * 切换右侧面板显示的内容 Tab（"故事记录" 或 "角色档案"）。
+ * 同时更新 Tab 按钮的激活样式。
+ *
+ * @param {string}      name - 目标面板名称（"notes" 或 "chars"）
+ * @param {HTMLElement} btn  - 被点击的 Tab 按钮元素（用于高亮）
+ */
+function switchPanel(name, btn) {
+  // 隐藏所有面板，移除所有 Tab 的激活状态
+  document.querySelectorAll(".panel-sec").forEach(s => s.classList.remove("vis"));
+  document.querySelectorAll(".vtab").forEach(t => t.classList.remove("on"));
+  // 显示目标面板，激活对应 Tab
+  document.getElementById("panel-" + name).classList.add("vis");
+  btn.classList.add("on");
+}
+
+
+/* ─────────────────────────────────────────
+   事件绑定
+───────────────────────────────────────── */
+
+// 输入框：Enter 直接发送，Shift+Enter 换行（标准聊天框交互）
+document.getElementById("pinput").addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault(); // 阻止默认的换行行为
+    doSend();
+  }
+});
+
+// 点击弹窗遮罩层（modal 外侧区域）时关闭弹窗
+document.getElementById("overlay").addEventListener("click", e => {
+  if (e.target === document.getElementById("overlay")) closeModal();
+});
+
+
+/* ─────────────────────────────────────────
+   工具函数
+───────────────────────────────────────── */
+
+/**
+ * sleep(ms)
+ * 异步等待指定毫秒数。
+ * 用于在多个 AI 角色轮流发言之间制造节奏感，
+ * 避免所有回复同时涌出，体验更接近真实对话。
+ *
+ * @param {number} ms - 等待毫秒数
+ * @returns {Promise<void>}
+ */
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+
+/* ─────────────────────────────────────────
+   初始化（页面加载时执行）
+───────────────────────────────────────── */
+renderChars();   // 渲染初始角色列表（包含默认的"旁白"卡片）
+buildSwatches(); // 初始化弹窗颜色色板（预选第一个颜色）
+
+</script>
+</body>
+</html>
