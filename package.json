@@ -1,0 +1,16 @@
+{
+  "name": "ai-role-story",
+  "version": "2.0.0",
+  "description": "AI角色叙事小说工坊 — 带后端代理与本地存档",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  }
+}

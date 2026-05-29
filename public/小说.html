@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>群像叙事 · AI小说工坊</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;600;700&family=Noto+Sans+SC:wght@300;400;500&family=ZCOOL+XiaoWei&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #1a1208;
+    --paper: #f5f0e8;
+    --paper2: #ede8dc;
+    --sepia: #8b6914;
+    --gold: #c9a227;
+    --gold-light: #e8c84a;
+    --red: #8b1a1a;
+    --fade: #6b5a3e;
+    --border: rgba(139,105,20,0.25);
+    --shadow: rgba(26,18,8,0.15);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Noto Sans SC', sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    min-height: 100vh;
+    background-image:
+      radial-gradient(ellipse at 20% 10%, rgba(201,162,39,0.08) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 90%, rgba(139,26,26,0.05) 0%, transparent 50%);
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(245,240,232,0.95);
+    backdrop-filter: blur(8px);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .logo {
+    font-family: 'ZCOOL XiaoWei', serif;
+    font-size: 22px; color: var(--sepia);
+    letter-spacing: 4px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .logo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); }
+  .header-actions { display: flex; gap: 8px; }
+  .h-btn {
+    padding: 7px 18px; border: 1.5px solid var(--border);
+    border-radius: 20px; background: transparent;
+    color: var(--fade); font-size: 12px; cursor: pointer;
+    font-family: 'Noto Sans SC', sans-serif; transition: all .2s;
+  }
+  .h-btn:hover { border-color: var(--sepia); color: var(--sepia); }
+  .app { display: flex; height: calc(100vh - 61px); }
+  .sidebar {
+    width: 270px; flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    background: var(--paper2);
+  }
+  .sidebar-title {
+    padding: 16px 18px 12px;
+    font-family: 'ZCOOL XiaoWei', serif;
+    font-size: 12px; letter-spacing: 3px; color: var(--fade);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .add-btn {
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 1.5px solid var(--sepia);
+    background: transparent; color: var(--sepia);
+    font-size: 15px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all .2s; line-height: 1;
+  }
+  .add-btn:hover { background: var(--sepia); color: var(--paper); }
+  .char-list { flex: 1; overflow-y: auto; padding: 10px; }
+  .char-list::-webkit-scrollbar { width: 3px; }
+  .char-list::-webkit-scrollbar-thumb { background: var(--border); }
+  .char-card {
+    border-radius: 10px; padding: 11px 13px; margin-bottom: 7px;
+    cursor: pointer; transition: all .2s;
+    border: 1.5px solid transparent;
+    background: var(--paper); position: relative;
+  }
+  .char-card:hover { border-color: var(--border); }
+  .char-card.narrator-card { background: #1a1208; }
+  .char-card.narrator-card .cname { color: var(--gold); }
+  .char-card.narrator-card .crole { color: rgba(201,162,39,0.5); }
+  .char-card.narrator-card .cbio { color: rgba(201,162,39,0.35); }
+  .char-head { display: flex; align-items: center; gap: 9px; margin-bottom: 5px; }
+  .cavatar {
+    width: 34px; height: 34px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-family: 'ZCOOL XiaoWei', serif;
+    font-weight: 700; flex-shrink: 0;
+  }
+  .cname { font-size: 14px; font-weight: 500; }
+  .crole { font-size: 11px; color: var(--fade); }
+  .cbio {
+    font-size: 11px; color: var(--fade); line-height: 1.6;
+    display: -webkit-box; -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .cdel {
+    position: absolute; top: 7px; right: 7px;
+    width: 18px; height: 18px; border-radius: 50%;
+    border: none; background: transparent;
+    color: #bbb; font-size: 12px; cursor: pointer;
+    display: none; align-items: center; justify-content: center;
+  }
+  .char-card:hover .cdel { display: flex; }
+  .cdel:hover { background: var(--red); color: white; }
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .story-feed { flex: 1; overflow-y: auto; padding: 28px 36px; }
+  .story-feed::-webkit-scrollbar { width: 4px; }
+  .story-feed::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .story-entry { margin-bottom: 26px; animation: fadeUp .35s ease both; }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+  .emeta { display: flex; align-items: center; gap: 9px; margin-bottom: 7px; }
+  .eavatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-family: 'ZCOOL XiaoWei', serif; flex-shrink: 0;
+  }
+  .ename { font-size: 13px; font-weight: 500; }
+  .etime { font-size: 11px; color: var(--fade); margin-left: auto; }
+  .ebubble {
+    margin-left: 37px; padding: 13px 16px;
+    border-radius: 2px 12px 12px 12px;
+    line-height: 1.9; font-size: 14.5px;
+    font-family: 'Noto Serif SC', serif;
+  }
+  .narrator-bubble {
+    margin-left: 0; background: transparent;
+    border-left: 3px solid var(--gold);
+    padding-left: 18px; border-radius: 0;
+    font-style: italic; color: var(--sepia);
+    font-size: 14px; line-height: 1.9;
+  }
+  .user-bubble {
+    background: var(--ink); color: var(--paper);
+    border-radius: 12px 2px 12px 12px;
+    margin-left: auto; max-width: 68%;
+    font-family: 'Noto Sans SC', sans-serif;
+    font-size: 13.5px;
+  }
+  .empty-state {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    height: 100%; color: var(--fade); text-align: center; gap: 12px;
+  }
+  .empty-icon { font-size: 52px; opacity: .35; }
+  .empty-ttl { font-family: 'ZCOOL XiaoWei', serif; font-size: 22px; letter-spacing: 4px; }
+  .empty-sub { font-size: 13px; line-height: 1.9; max-width: 300px; opacity: .8; }
+  .ctrl-bar { border-top: 1px solid var(--border); padding: 14px 22px; background: var(--paper2); }
+  .ctrl-row { display: flex; gap: 9px; margin-bottom: 9px; align-items: flex-end; }
+  .ctrl-row:last-child { margin-bottom: 0; }
+  .spk-sel {
+    padding: 8px 12px; border-radius: 8px;
+    border: 1.5px solid var(--border);
+    background: var(--paper); color: var(--ink);
+    font-family: 'Noto Sans SC', sans-serif;
+    font-size: 13px; cursor: pointer; min-width: 115px; height: 42px;
+  }
+  .spk-sel:focus { outline: none; border-color: var(--gold); }
+  .pinput {
+    flex: 1; padding: 10px 14px;
+    border-radius: 10px; border: 1.5px solid var(--border);
+    background: var(--paper); color: var(--ink);
+    font-family: 'Noto Sans SC', sans-serif;
+    font-size: 14px; resize: none; height: 42px;
+    transition: border-color .2s; line-height: 1.4;
+  }
+  .pinput:focus { outline: none; border-color: var(--gold); }
+  .abtn {
+    padding: 0 20px; border-radius: 10px;
+    border: none; cursor: pointer;
+    font-family: 'Noto Sans SC', sans-serif;
+    font-size: 13px; font-weight: 500;
+    transition: all .2s; height: 42px;
+    display: flex; align-items: center; gap: 6px; white-space: nowrap;
+  }
+  .btn-p { background: var(--ink); color: var(--paper); }
+  .btn-p:hover { background: var(--sepia); }
+  .btn-p:disabled { opacity: .45; cursor: not-allowed; }
+  .btn-g { background: var(--gold); color: var(--ink); font-size: 12px; }
+  .btn-g:hover { background: var(--gold-light); }
+  .btn-g:disabled { opacity: .45; cursor: not-allowed; }
+  .btn-o { background: transparent; color: var(--sepia); border: 1.5px solid var(--border); font-size: 12px; }
+  .btn-o:hover { border-color: var(--sepia); }
+  .ldots span {
+    display: inline-block; width: 5px; height: 5px;
+    border-radius: 50%; background: currentColor; margin: 0 2px;
+    animation: dot .7s infinite;
+  }
+  .ldots span:nth-child(2){animation-delay:.13s}
+  .ldots span:nth-child(3){animation-delay:.26s}
+  @keyframes dot{0%,80%,100%{opacity:.2;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
+  .overlay {
+    position: fixed; inset: 0; z-index: 200;
+    background: rgba(26,18,8,0.55); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity .2s;
+  }
+  .overlay.open { opacity: 1; pointer-events: all; }
+  .modal {
+    background: var(--paper); border-radius: 16px;
+    padding: 26px 30px; width: 480px; max-width: 95vw;
+    box-shadow: 0 20px 60px rgba(26,18,8,0.3);
+    transform: translateY(12px); transition: transform .2s;
+  }
+  .overlay.open .modal { transform: translateY(0); }
+  .mtitle {
+    font-family: 'ZCOOL XiaoWei', serif;
+    font-size: 18px; letter-spacing: 3px;
+    color: var(--sepia); margin-bottom: 18px;
+  }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 11px; color: var(--fade); margin-bottom: 5px; letter-spacing: 1px; }
+  .field input, .field textarea {
+    width: 100%; padding: 9px 13px;
+    border-radius: 8px; border: 1.5px solid var(--border);
+    background: var(--paper2); color: var(--ink);
+    font-family: 'Noto Sans SC', sans-serif; font-size: 13px;
+    transition: border-color .2s;
+  }
+  .field textarea { height: 110px; resize: vertical; line-height: 1.7; }
+  .field input:focus, .field textarea:focus { outline: none; border-color: var(--gold); }
+  .swatch-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .swatch {
+    width: 26px; height: 26px; border-radius: 50%;
+    cursor: pointer; transition: transform .15s;
+    border: 2px solid transparent;
+  }
+  .swatch:hover, .swatch.sel { transform: scale(1.25); border-color: var(--ink); }
+  .mactions { display: flex; gap: 9px; margin-top: 20px; justify-content: flex-end; }
+  .notes-panel {
+    width: 250px; flex-shrink: 0;
+    border-left: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    background: var(--paper2);
+  }
+  .vtabs { display: flex; gap: 2px; padding: 7px; border-bottom: 1px solid var(--border); }
+  .vtab {
+    flex: 1; padding: 6px; font-size: 11px;
+    border: none; background: transparent; cursor: pointer;
+    border-radius: 6px; color: var(--fade); transition: all .15s;
+    font-family: 'Noto Sans SC', sans-serif;
+  }
+  .vtab.on { background: var(--ink); color: var(--paper); }
+  .panel-sec { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+  .panel-sec.vis { display: flex; }
+  .panel-title {
+    padding: 14px 18px 10px;
+    font-family: 'ZCOOL XiaoWei', serif;
+    font-size: 12px; letter-spacing: 3px; color: var(--fade);
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-body { flex: 1; overflow-y: auto; padding: 12px; }
+  .panel-body::-webkit-scrollbar { width: 3px; }
+  .panel-body::-webkit-scrollbar-thumb { background: var(--border); }
+  .note-card {
+    padding: 11px 13px; background: var(--paper);
+    border-radius: 8px; margin-bottom: 9px;
+    font-size: 11.5px; line-height: 1.7; color: var(--fade);
+    border-left: 3px solid var(--gold);
+    font-family: 'Noto Serif SC', serif;
+  }
+  .note-ts { font-size: 10px; color: var(--sepia); font-family: 'Noto Sans SC', sans-serif; margin-bottom: 4px; letter-spacing: 1px; }
+  .panel-empty { font-size: 12px; color: var(--fade); text-align: center; padding-top: 36px; line-height: 1.9; }
+  .story-item {
+    padding: 12px 14px; border: 1.5px solid var(--border);
+    border-radius: 10px; margin-bottom: 9px;
+    display: flex; align-items: center; justify-content: space-between;
+    transition: border-color .2s;
+  }
+  .story-item:hover { border-color: var(--gold); }
+  .story-item-info { flex: 1; min-width: 0; margin-right: 10px; }
+  .story-item-title { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .story-item-meta { font-size: 11px; color: var(--fade); margin-top: 3px; }
+  .story-item-actions { display: flex; gap: 6px; flex-shrink: 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"><div class="logo-dot"></div>群像叙事</div>
+  <div class="header-actions">
+    <button class="h-btn" onclick="saveStory()">保存故事</button>
+    <button class="h-btn" onclick="openLoadModal()">加载存档</button>
+    <button class="h-btn" onclick="exportStory()">导出故事</button>
+    <button class="h-btn" onclick="clearStory()">清空重来</button>
+  </div>
+</header>
+
+<div class="app">
+  <div class="sidebar">
+    <div class="sidebar-title">
+      <span>角色列表</span>
+      <button class="add-btn" onclick="openModal()" title="添加角色">+</button>
+    </div>
+    <div class="char-list" id="charList"></div>
+  </div>
+
+  <div class="main">
+    <div class="story-feed" id="feed">
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon">📖</div>
+        <div class="empty-ttl">群像叙事</div>
+        <div class="empty-sub">在左侧添加角色，赋予他们背景与灵魂<br>输入指令，让旁白开启这段故事</div>
+      </div>
+    </div>
+    <div class="ctrl-bar">
+      <div class="ctrl-row">
+        <select class="spk-sel" id="spkSel">
+          <option value="narrator">📜 旁白推进</option>
+          <option value="auto">🎭 自动选角</option>
+        </select>
+        <textarea class="pinput" id="pinput" placeholder="输入旁白指令或角色触发词，回车发送…" rows="1"></textarea>
+        <button class="abtn btn-p" id="sendBtn" onclick="doSend()">发送</button>
+      </div>
+      <div class="ctrl-row">
+        <button class="abtn btn-g" id="autoBtn" onclick="doAutoAdvance()">✦ 自动推进一回合</button>
+        <button class="abtn btn-o" onclick="openModal()">+ 新增角色</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="notes-panel">
+    <div class="vtabs">
+      <button class="vtab on" onclick="switchPanel('notes',this)">故事记录</button>
+      <button class="vtab" onclick="switchPanel('chars',this)">角色档案</button>
+    </div>
+    <div class="panel-sec vis" id="panel-notes">
+      <div class="panel-title">情节摘要</div>
+      <div class="panel-body" id="notesList">
+        <div class="panel-empty">故事开始后<br>旁白情节将自动记录于此</div>
+      </div>
+    </div>
+    <div class="panel-sec" id="panel-chars">
+      <div class="panel-title">角色详情</div>
+      <div class="panel-body" id="charDetail">
+        <div class="panel-empty">点击左侧角色<br>查看人物档案</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 新建角色模态框 -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="mtitle">创建新角色</div>
+    <div class="field"><label>角色名称 *</label><input id="mName" placeholder="如：林清远"></div>
+    <div class="field"><label>身份定位</label><input id="mRole" placeholder="如：落魄书生 / 冷酷侦探 / 江湖侠客"></div>
+    <div class="field">
+      <label>人物背景与性格（越详细越好）</label>
+      <textarea id="mBio" placeholder="描述角色的出身、经历、性格特点、说话方式、内心矛盾，以及与其他角色的关系…"></textarea>
+    </div>
+    <div class="field"><label>角色颜色</label><div class="swatch-row" id="swatches"></div></div>
+    <div class="mactions">
+      <button class="abtn btn-o" onclick="closeModal()">取消</button>
+      <button class="abtn btn-p" onclick="saveChar()">创建角色</button>
+    </div>
+  </div>
+</div>
+
+<!-- 加载存档模态框 -->
+<div class="overlay" id="loadOverlay">
+  <div class="modal" style="width:520px">
+    <div class="mtitle">加载故事存档</div>
+    <div id="storyList" style="max-height:380px;overflow-y:auto;min-height:60px;"></div>
+    <div class="mactions">
+      <button class="abtn btn-o" onclick="closeLoadModal()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const MODEL = "claude-sonnet-4-5";
+const COLORS = ["#8b6914","#8b1a1a","#1a4a8b","#2d7a3a","#6b4a8b","#8b4a2d","#2d7a7a","#8b7a2d","#4a6b8b","#8b2d6b"];
+
+let chars = [{
+  id:"narrator", name:"旁白", role:"全知叙述者",
+  bio:"全知旁白与故事导演，掌控场景、推进情节、渲染氛围。",
+  color:"#c9a227", isNarrator:true
+}];
+let log = [];
+let notes = [];
+let busy = false;
+let selColor = COLORS[0];
+
+function renderChars() {
+  const el = document.getElementById("charList");
+  el.innerHTML = "";
+  chars.forEach(c => {
+    const d = document.createElement("div");
+    d.className = "char-card" + (c.isNarrator ? " narrator-card" : "");
+    d.innerHTML = `
+      <div class="char-head">
+        <div class="cavatar" style="background:${c.color}22;color:${c.color}">${c.name[0]}</div>
+        <div><div class="cname">${c.name}</div><div class="crole">${c.role}</div></div>
+      </div>
+      <div class="cbio">${c.bio}</div>
+      ${c.isNarrator?"":`<button class="cdel" onclick="delChar('${c.id}',event)">×</button>`}
+    `;
+    d.onclick = () => showCharDetail(c);
+    el.appendChild(d);
+  });
+  const sel = document.getElementById("spkSel");
+  const cur = sel.value;
+  sel.innerHTML = `<option value="narrator">📜 旁白推进</option><option value="auto">🎭 自动选角</option>`;
+  chars.filter(c=>!c.isNarrator).forEach(c=>{
+    sel.innerHTML += `<option value="${c.id}">${c.name} 开口说话</option>`;
+  });
+  if([...sel.options].some(o=>o.value===cur)) sel.value=cur;
+}
+
+function delChar(id,e) {
+  e.stopPropagation();
+  if(!confirm("确定删除这个角色？")) return;
+  chars = chars.filter(c=>c.id!==id);
+  renderChars();
+}
+
+function showCharDetail(c) {
+  switchPanel("chars", document.querySelectorAll(".vtab")[1]);
+  document.getElementById("charDetail").innerHTML = `
+    <div style="text-align:center;padding:18px 0 14px">
+      <div style="width:56px;height:56px;border-radius:50%;background:${c.color}22;color:${c.color};font-size:24px;font-family:'ZCOOL XiaoWei',serif;display:flex;align-items:center;justify-content:center;margin:0 auto 10px">${c.name[0]}</div>
+      <div style="font-family:'ZCOOL XiaoWei',serif;font-size:17px;letter-spacing:2px">${c.name}</div>
+      <div style="font-size:11px;color:var(--fade);margin-top:4px">${c.role}</div>
+    </div>
+    <div style="font-size:12px;line-height:1.9;color:var(--fade);font-family:'Noto Serif SC',serif;padding:12px;background:var(--paper);border-radius:8px;border-left:3px solid ${c.color}">${c.bio}</div>
+  `;
+}
+
+function openModal() {
+  selColor = COLORS[Math.floor(Math.random()*COLORS.length)];
+  buildSwatches();
+  ["mName","mRole","mBio"].forEach(id=>document.getElementById(id).value="");
+  document.getElementById("overlay").classList.add("open");
+  setTimeout(()=>document.getElementById("mName").focus(),100);
+}
+function closeModal() { document.getElementById("overlay").classList.remove("open"); }
+
+function buildSwatches() {
+  const el = document.getElementById("swatches");
+  el.innerHTML = "";
+  COLORS.forEach(c=>{
+    const s = document.createElement("div");
+    s.className = "swatch"+(c===selColor?" sel":"");
+    s.style.background = c;
+    s.onclick = ()=>{selColor=c; el.querySelectorAll(".swatch").forEach(x=>x.classList.remove("sel")); s.classList.add("sel");};
+    el.appendChild(s);
+  });
+}
+
+function saveChar() {
+  const name = document.getElementById("mName").value.trim();
+  if(!name){alert("请输入角色名称");return;}
+  chars.push({
+    id:"c"+Date.now(), name,
+    role: document.getElementById("mRole").value.trim()||"角色",
+    bio: document.getElementById("mBio").value.trim()||"暂无背景设定",
+    color: selColor
+  });
+  renderChars();
+  closeModal();
+  const es = document.getElementById("emptyState");
+  if(es) es.style.display="none";
+}
+
+function addEntryDOM(speakerId, text, time, isUser=false) {
+  const c = chars.find(x=>x.id===speakerId)||chars[0];
+  const feed = document.getElementById("feed");
+  const es = document.getElementById("emptyState");
+  if(es) es.style.display="none";
+  const d = document.createElement("div");
+  d.className = "story-entry";
+  if(isUser){
+    d.innerHTML=`<div class="emeta" style="justify-content:flex-end"><span class="etime">${time}</span><span class="ename" style="color:var(--sepia)">导演指令</span></div><div class="ebubble user-bubble">${text}</div>`;
+  } else if(speakerId==="narrator"){
+    d.innerHTML=`<div class="emeta"><div class="eavatar" style="background:#1a1208;color:var(--gold)">📜</div><span class="ename" style="color:var(--gold);font-family:'ZCOOL XiaoWei',serif;letter-spacing:2px">旁白</span><span class="etime">${time}</span></div><div class="narrator-bubble">${text}</div>`;
+  } else {
+    d.innerHTML=`<div class="emeta"><div class="eavatar" style="background:${c.color}22;color:${c.color}">${c.name[0]}</div><span class="ename" style="color:${c.color}">${c.name}</span><span class="etime">${time}</span></div><div class="ebubble" style="background:${c.color}10;border-left:3px solid ${c.color}44">${text}</div>`;
+  }
+  feed.appendChild(d);
+  feed.scrollTop=feed.scrollHeight;
+}
+
+function addEntry(speakerId, text, isUser=false) {
+  const now = new Date().toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"});
+  addEntryDOM(speakerId, text, now, isUser);
+  log.push({speaker:speakerId, content:text, time:now, isUser});
+}
+
+function addNote(text) {
+  const short = text.slice(0,90)+(text.length>90?"…":"");
+  const now = new Date().toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"});
+  notes.push({text:short,time:now});
+  const el = document.getElementById("notesList");
+  el.innerHTML = notes.slice().reverse().map(n=>`<div class="note-card"><div class="note-ts">${n.time}</div>${n.text}</div>`).join("");
+}
+
+async function claude(system, msgs) {
+  const r = await fetch("/api/chat", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({model:MODEL, max_tokens:1000, system, messages:msgs})
+  });
+  if(!r.ok) {
+    const err = await r.json().catch(()=>({}));
+    throw new Error(err.error?.message || "API 错误 " + r.status);
+  }
+  const d = await r.json();
+  return d.content?.[0]?.text||"";
+}
+
+function ctx() {
+  return log.slice(-18).map(e=>{
+    const c=chars.find(x=>x.id===e.speaker);
+    return `【${c?.name||"旁白"}】${e.content}`;
+  }).join("\n\n");
+}
+
+function narratorSys() {
+  const cl = chars.filter(c=>!c.isNarrator).map(c=>`· ${c.name}（${c.role}）：${c.bio}`).join("\n");
+  return `你是这部小说的全知旁白与故事导演。\n\n【角色概况】\n${cl||"（尚无角色）"}\n\n【职责】\n1. 用凝练优美的文学语言描述场景、推进情节\n2. 渲染情绪氛围，制造戏剧张力\n3. 适时引出角色互动与冲突\n4. 回复控制在120字以内，简洁有力\n\n只输出旁白正文，不加任何说明标签。`;
+}
+
+function charSys(c) {
+  const others = chars.filter(x=>!x.isNarrator&&x.id!==c.id).map(x=>`· ${x.name}（${x.role}）`).join("\n");
+  return `你正在完全扮演小说角色【${c.name}】。\n\n【你的设定】\n姓名：${c.name}\n身份：${c.role}\n背景：${c.bio}\n\n【其他角色】\n${others||"（暂无）"}\n\n【扮演要求】\n· 完全沉浸角色，第一人称行事\n· 语气、措辞符合角色身份\n· 简短有力，不超过100字\n· 只输出角色的话语或动作，无元信息`;
+}
+
+async function doSend() {
+  if(busy) return;
+  const txt = document.getElementById("pinput").value.trim();
+  const spk = document.getElementById("spkSel").value;
+  if(!txt) return;
+  document.getElementById("pinput").value="";
+  addEntry("user_dir",txt,true);
+  await gen(spk,txt);
+}
+
+async function gen(spk, directive) {
+  if(busy) return;
+  busy=true; setLoading(true);
+  try {
+    const c0 = ctx();
+    const hist = c0?`【故事进展】\n${c0}\n\n`:"";
+    if(spk==="narrator"){
+      const r = await claude(narratorSys(),[{role:"user",content:`${hist}【导演】${directive}\n\n请以旁白身份推进故事。`}]);
+      addEntry("narrator",r); addNote(r);
+    } else if(spk==="auto"){
+      const nc = chars.filter(c=>!c.isNarrator);
+      if(!nc.length){addEntry("narrator","（请先添加角色）");return;}
+      const rn = await claude(narratorSys(),[{role:"user",content:`${hist}【导演】${directive}\n\n推进情节并自然引出角色互动。`}]);
+      addEntry("narrator",rn); addNote(rn);
+      const picks = [...nc].sort(()=>Math.random()-.5).slice(0,Math.min(2,nc.length));
+      for(const c of picks){
+        await sleep(350);
+        const r = await claude(charSys(c),[{role:"user",content:`【故事进展】\n${ctx()}\n\n${c.name}的反应是？`}]);
+        addEntry(c.id,r);
+      }
+    } else {
+      const c = chars.find(x=>x.id===spk);
+      if(!c) return;
+      const r = await claude(charSys(c),[{role:"user",content:`${hist}【导演】${directive}\n\n${c.name}的回应是？`}]);
+      addEntry(c.id,r);
+    }
+  } catch(e){
+    addEntry("narrator",`⚠ 出错：${e.message}`);
+  } finally {
+    busy=false; setLoading(false);
+  }
+}
+
+async function doAutoAdvance() {
+  if(busy) return;
+  if(chars.filter(c=>!c.isNarrator).length===0){alert("请先添加至少一个角色");return;}
+  busy=true; setLoading(true);
+  try {
+    const c0 = ctx();
+    const hist = c0?`【故事进展】\n${c0}\n\n`:"（故事刚开始）\n\n";
+    const rn = await claude(narratorSys(),[{role:"user",content:`${hist}请推进故事，制造一个情节转折或场景切换，带出角色互动。`}]);
+    addEntry("narrator",rn); addNote(rn);
+    for(const c of chars.filter(x=>!x.isNarrator)){
+      await sleep(380);
+      const r = await claude(charSys(c),[{role:"user",content:`【故事进展】\n${ctx()}\n\n${c.name}此刻的反应？`}]);
+      addEntry(c.id,r);
+    }
+  } catch(e){
+    addEntry("narrator",`⚠ 出错：${e.message}`);
+  } finally {
+    busy=false; setLoading(false);
+  }
+}
+
+function setLoading(on) {
+  const sb=document.getElementById("sendBtn"), ab=document.getElementById("autoBtn");
+  if(on){
+    sb.disabled=ab.disabled=true;
+    sb.innerHTML=`<span class="ldots"><span></span><span></span><span></span></span>`;
+  } else {
+    sb.disabled=ab.disabled=false;
+    sb.textContent="发送";
+  }
+}
+
+function clearStory() {
+  if(log.length&&!confirm("确定清空所有故事内容？")) return;
+  log=[]; notes=[];
+  document.getElementById("feed").innerHTML=`<div class="empty-state" id="emptyState"><div class="empty-icon">📖</div><div class="empty-ttl">群像叙事</div><div class="empty-sub">在左侧添加角色，赋予他们背景与灵魂<br>输入指令，让旁白开启这段故事</div></div>`;
+  document.getElementById("notesList").innerHTML=`<div class="panel-empty">故事开始后<br>旁白情节将自动记录于此</div>`;
+}
+
+function exportStory() {
+  if(!log.length){alert("故事还是空白的");return;}
+  const txt = log.map(e=>{
+    const c=chars.find(x=>x.id===e.speaker);
+    return `【${c?.name||"旁白"}】\n${e.content}`;
+  }).join("\n\n---\n\n");
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([txt],{type:"text/plain;charset=utf-8"}));
+  a.download=`群像叙事_${new Date().toLocaleDateString("zh-CN")}.txt`;
+  a.click();
+}
+
+async function saveStory() {
+  if(!log.length){alert("故事还是空白的，无法保存");return;}
+  const title = prompt("为这个故事命名：", `故事_${new Date().toLocaleDateString("zh-CN")}`);
+  if(title===null) return;
+  try {
+    const r = await fetch("/api/stories", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({
+        title: title.trim()||`故事_${new Date().toLocaleDateString("zh-CN")}`,
+        chars: chars.filter(c=>!c.isNarrator),
+        log, notes
+      })
+    });
+    if(!r.ok) throw new Error("保存失败");
+    alert("故事已保存！");
+  } catch(e) {
+    alert("保存失败："+e.message);
+  }
+}
+
+async function openLoadModal() {
+  const overlay = document.getElementById("loadOverlay");
+  const list = document.getElementById("storyList");
+  list.innerHTML = '<div style="text-align:center;padding:24px;color:var(--fade)">加载中…</div>';
+  overlay.classList.add("open");
+  try {
+    const r = await fetch("/api/stories");
+    const stories = await r.json();
+    if(!stories.length){
+      list.innerHTML = '<div class="panel-empty" style="padding-top:20px">暂无存档<br>保存故事后可在此加载</div>';
+      return;
+    }
+    list.innerHTML = stories.map(s=>`
+      <div class="story-item">
+        <div class="story-item-info">
+          <div class="story-item-title">${s.title}</div>
+          <div class="story-item-meta">${new Date(s.savedAt).toLocaleString("zh-CN")} · ${s.charCount||0} 个角色 · ${s.logCount||0} 条记录</div>
+        </div>
+        <div class="story-item-actions">
+          <button class="abtn btn-p" style="height:32px;font-size:12px;padding:0 12px" onclick="loadStory('${s.id}')">加载</button>
+          <button class="abtn btn-o" style="height:32px;font-size:12px;padding:0 10px" onclick="deleteStory('${s.id}')">删除</button>
+        </div>
+      </div>
+    `).join("");
+  } catch(e) {
+    list.innerHTML = `<div class="panel-empty" style="padding-top:20px">获取失败：${e.message}</div>`;
+  }
+}
+
+function closeLoadModal() {
+  document.getElementById("loadOverlay").classList.remove("open");
+}
+
+async function loadStory(id) {
+  if(log.length&&!confirm("加载存档将覆盖当前故事，确定继续？")) return;
+  try {
+    const r = await fetch(`/api/stories/${id}`);
+    if(!r.ok) throw new Error("故事不存在");
+    const data = await r.json();
+    chars = [
+      {id:"narrator",name:"旁白",role:"全知叙述者",bio:"全知旁白与故事导演，掌控场景、推进情节、渲染氛围。",color:"#c9a227",isNarrator:true},
+      ...(data.chars||[])
+    ];
+    log = data.log||[];
+    notes = data.notes||[];
+    renderChars();
+    restoreFeed();
+    restoreNotes();
+    closeLoadModal();
+  } catch(e) {
+    alert("加载失败："+e.message);
+  }
+}
+
+async function deleteStory(id) {
+  if(!confirm("确定删除这个存档？此操作不可恢复。")) return;
+  try {
+    await fetch(`/api/stories/${id}`, {method:"DELETE"});
+    await openLoadModal();
+  } catch(e) {
+    alert("删除失败："+e.message);
+  }
+}
+
+function restoreFeed() {
+  const feed = document.getElementById("feed");
+  feed.innerHTML = "";
+  if(!log.length){
+    feed.innerHTML = `<div class="empty-state" id="emptyState"><div class="empty-icon">📖</div><div class="empty-ttl">群像叙事</div><div class="empty-sub">在左侧添加角色，赋予他们背景与灵魂<br>输入指令，让旁白开启这段故事</div></div>`;
+    return;
+  }
+  log.forEach(e=>addEntryDOM(e.speaker, e.content, e.time, e.isUser||false));
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function restoreNotes() {
+  const el = document.getElementById("notesList");
+  if(!notes.length){
+    el.innerHTML = '<div class="panel-empty">故事开始后<br>旁白情节将自动记录于此</div>';
+    return;
+  }
+  el.innerHTML = notes.slice().reverse().map(n=>`<div class="note-card"><div class="note-ts">${n.time}</div>${n.text}</div>`).join("");
+}
+
+function switchPanel(name,btn) {
+  document.querySelectorAll(".panel-sec").forEach(s=>s.classList.remove("vis"));
+  document.querySelectorAll(".vtab").forEach(t=>t.classList.remove("on"));
+  document.getElementById("panel-"+name).classList.add("vis");
+  btn.classList.add("on");
+}
+
+document.getElementById("pinput").addEventListener("keydown",e=>{
+  if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}
+});
+document.getElementById("overlay").addEventListener("click",e=>{
+  if(e.target===document.getElementById("overlay")) closeModal();
+});
+document.getElementById("loadOverlay").addEventListener("click",e=>{
+  if(e.target===document.getElementById("loadOverlay")) closeLoadModal();
+});
+
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+
+renderChars();
+buildSwatches();
+</script>
+</body>
+</html>
