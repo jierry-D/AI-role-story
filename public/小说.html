@@ -290,6 +290,7 @@
     <button class="h-btn" onclick="openLoadModal()">加载存档</button>
     <button class="h-btn" onclick="exportStory()">导出故事</button>
     <button class="h-btn" onclick="clearStory()">清空重来</button>
+    <button class="h-btn" id="aiSettingsBtn" onclick="openSettingsModal()" style="border-color:var(--gold);color:var(--sepia)">⚙ AI设置</button>
   </div>
 </header>
 
@@ -364,6 +365,42 @@
   </div>
 </div>
 
+<!-- AI 设置模态框 -->
+<div class="overlay" id="settingsOverlay">
+  <div class="modal">
+    <div class="mtitle">AI 设置</div>
+    <div class="field">
+      <label>AI 提供商</label>
+      <select id="sProvider" class="spk-sel" style="width:100%;min-width:unset;height:38px" onchange="onProviderChange()">
+        <option value="anthropic">Anthropic Claude</option>
+        <option value="openai">OpenAI</option>
+        <option value="deepseek">DeepSeek</option>
+        <option value="gemini">Google Gemini</option>
+        <option value="moonshot">Moonshot（Kimi）</option>
+        <option value="qwen">通义千问（Qwen）</option>
+        <option value="groq">Groq</option>
+        <option value="siliconflow">SiliconFlow</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>模型名称</label>
+      <input id="sModel" placeholder="输入模型名称">
+      <div id="sModelHints" style="margin-top:7px;display:flex;flex-wrap:wrap;gap:5px"></div>
+    </div>
+    <div class="field">
+      <label>API Key</label>
+      <input id="sApiKey" type="password" placeholder="粘贴你的 API Key">
+    </div>
+    <div style="font-size:11px;color:var(--fade);line-height:1.7;margin:-4px 0 14px">
+      API Key 仅保存在浏览器本地（localStorage），不会上传至服务器。
+    </div>
+    <div class="mactions">
+      <button class="abtn btn-o" onclick="closeSettingsModal()">取消</button>
+      <button class="abtn btn-p" onclick="confirmSettings()">保存设置</button>
+    </div>
+  </div>
+</div>
+
 <!-- 加载存档模态框 -->
 <div class="overlay" id="loadOverlay">
   <div class="modal" style="width:520px">
@@ -376,8 +413,76 @@
 </div>
 
 <script>
-const MODEL = "claude-sonnet-4-5";
 const COLORS = ["#8b6914","#8b1a1a","#1a4a8b","#2d7a3a","#6b4a8b","#8b4a2d","#2d7a7a","#8b7a2d","#4a6b8b","#8b2d6b"];
+
+const PROVIDERS = {
+  anthropic:   { name: 'Anthropic Claude', models: ['claude-sonnet-4-5', 'claude-3-5-haiku-20241022', 'claude-opus-4-5'] },
+  openai:      { name: 'OpenAI',           models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'] },
+  deepseek:    { name: 'DeepSeek',         models: ['deepseek-chat', 'deepseek-reasoner'] },
+  gemini:      { name: 'Google Gemini',    models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'] },
+  moonshot:    { name: 'Moonshot (Kimi)',  models: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'] },
+  qwen:        { name: '通义千问',          models: ['qwen-turbo', 'qwen-plus', 'qwen-max'] },
+  groq:        { name: 'Groq',             models: ['llama-3.3-70b-versatile', 'mixtral-8x7b-32768'] },
+  siliconflow: { name: 'SiliconFlow',      models: ['Qwen/Qwen2.5-72B-Instruct', 'deepseek-ai/DeepSeek-V3'] },
+};
+
+let aiConfig = { provider: 'anthropic', model: 'claude-sonnet-4-5', apiKey: '' };
+
+function loadAIConfig() {
+  try {
+    const s = localStorage.getItem('ai_config');
+    if (s) aiConfig = { ...aiConfig, ...JSON.parse(s) };
+  } catch(e) {}
+  updateSettingsBtnStyle();
+}
+
+function saveAIConfig() {
+  localStorage.setItem('ai_config', JSON.stringify(aiConfig));
+}
+
+function updateSettingsBtnStyle() {
+  const btn = document.getElementById('aiSettingsBtn');
+  if (!btn) return;
+  btn.style.borderColor = aiConfig.apiKey ? 'var(--gold)' : 'var(--red)';
+  btn.style.color = aiConfig.apiKey ? 'var(--sepia)' : 'var(--red)';
+  btn.textContent = aiConfig.apiKey ? `⚙ ${PROVIDERS[aiConfig.provider]?.name || aiConfig.provider}` : '⚠ 请配置 AI';
+}
+
+function openSettingsModal() {
+  document.getElementById('sProvider').value = aiConfig.provider;
+  document.getElementById('sModel').value = aiConfig.model;
+  document.getElementById('sApiKey').value = aiConfig.apiKey;
+  updateModelHints(aiConfig.provider);
+  document.getElementById('settingsOverlay').classList.add('open');
+}
+
+function closeSettingsModal() {
+  document.getElementById('settingsOverlay').classList.remove('open');
+}
+
+function onProviderChange() {
+  const p = document.getElementById('sProvider').value;
+  const models = PROVIDERS[p]?.models || [];
+  if (models.length) document.getElementById('sModel').value = models[0];
+  updateModelHints(p);
+}
+
+function updateModelHints(provider) {
+  const models = PROVIDERS[provider]?.models || [];
+  document.getElementById('sModelHints').innerHTML = models.map(m =>
+    `<span style="font-size:10px;padding:2px 9px;border-radius:10px;border:1px solid var(--border);cursor:pointer;color:var(--fade)" onclick="document.getElementById('sModel').value='${m}'">${m}</span>`
+  ).join('');
+}
+
+function confirmSettings() {
+  const p = document.getElementById('sProvider').value;
+  const m = document.getElementById('sModel').value.trim() || PROVIDERS[p]?.models[0] || '';
+  const k = document.getElementById('sApiKey').value.trim();
+  aiConfig = { provider: p, model: m, apiKey: k };
+  saveAIConfig();
+  updateSettingsBtnStyle();
+  closeSettingsModal();
+}
 
 let chars = [{
   id:"narrator", name:"旁白", role:"全知叙述者",
@@ -502,18 +607,26 @@ function addNote(text) {
   el.innerHTML = notes.slice().reverse().map(n=>`<div class="note-card"><div class="note-ts">${n.time}</div>${n.text}</div>`).join("");
 }
 
-async function claude(system, msgs) {
+async function callAI(system, msgs) {
+  if (!aiConfig.apiKey) throw new Error('请先点击右上角 "⚠ 请配置 AI" 设置 API Key');
   const r = await fetch("/api/chat", {
     method: "POST",
     headers: {"Content-Type":"application/json"},
-    body: JSON.stringify({model:MODEL, max_tokens:1000, system, messages:msgs})
+    body: JSON.stringify({
+      provider: aiConfig.provider,
+      apiKey: aiConfig.apiKey,
+      model: aiConfig.model,
+      max_tokens: 1000,
+      system,
+      messages: msgs
+    })
   });
   if(!r.ok) {
     const err = await r.json().catch(()=>({}));
     throw new Error(err.error?.message || "API 错误 " + r.status);
   }
   const d = await r.json();
-  return d.content?.[0]?.text||"";
+  return d.content?.[0]?.text || "";
 }
 
 function ctx() {
@@ -550,23 +663,23 @@ async function gen(spk, directive) {
     const c0 = ctx();
     const hist = c0?`【故事进展】\n${c0}\n\n`:"";
     if(spk==="narrator"){
-      const r = await claude(narratorSys(),[{role:"user",content:`${hist}【导演】${directive}\n\n请以旁白身份推进故事。`}]);
+      const r = await callAI(narratorSys(),[{role:"user",content:`${hist}【导演】${directive}\n\n请以旁白身份推进故事。`}]);
       addEntry("narrator",r); addNote(r);
     } else if(spk==="auto"){
       const nc = chars.filter(c=>!c.isNarrator);
       if(!nc.length){addEntry("narrator","（请先添加角色）");return;}
-      const rn = await claude(narratorSys(),[{role:"user",content:`${hist}【导演】${directive}\n\n推进情节并自然引出角色互动。`}]);
+      const rn = await callAI(narratorSys(),[{role:"user",content:`${hist}【导演】${directive}\n\n推进情节并自然引出角色互动。`}]);
       addEntry("narrator",rn); addNote(rn);
       const picks = [...nc].sort(()=>Math.random()-.5).slice(0,Math.min(2,nc.length));
       for(const c of picks){
         await sleep(350);
-        const r = await claude(charSys(c),[{role:"user",content:`【故事进展】\n${ctx()}\n\n${c.name}的反应是？`}]);
+        const r = await callAI(charSys(c),[{role:"user",content:`【故事进展】\n${ctx()}\n\n${c.name}的反应是？`}]);
         addEntry(c.id,r);
       }
     } else {
       const c = chars.find(x=>x.id===spk);
       if(!c) return;
-      const r = await claude(charSys(c),[{role:"user",content:`${hist}【导演】${directive}\n\n${c.name}的回应是？`}]);
+      const r = await callAI(charSys(c),[{role:"user",content:`${hist}【导演】${directive}\n\n${c.name}的回应是？`}]);
       addEntry(c.id,r);
     }
   } catch(e){
@@ -583,11 +696,11 @@ async function doAutoAdvance() {
   try {
     const c0 = ctx();
     const hist = c0?`【故事进展】\n${c0}\n\n`:"（故事刚开始）\n\n";
-    const rn = await claude(narratorSys(),[{role:"user",content:`${hist}请推进故事，制造一个情节转折或场景切换，带出角色互动。`}]);
+    const rn = await callAI(narratorSys(),[{role:"user",content:`${hist}请推进故事，制造一个情节转折或场景切换，带出角色互动。`}]);
     addEntry("narrator",rn); addNote(rn);
     for(const c of chars.filter(x=>!x.isNarrator)){
       await sleep(380);
-      const r = await claude(charSys(c),[{role:"user",content:`【故事进展】\n${ctx()}\n\n${c.name}此刻的反应？`}]);
+      const r = await callAI(charSys(c),[{role:"user",content:`【故事进展】\n${ctx()}\n\n${c.name}此刻的反应？`}]);
       addEntry(c.id,r);
     }
   } catch(e){
@@ -748,9 +861,13 @@ document.getElementById("overlay").addEventListener("click",e=>{
 document.getElementById("loadOverlay").addEventListener("click",e=>{
   if(e.target===document.getElementById("loadOverlay")) closeLoadModal();
 });
+document.getElementById("settingsOverlay").addEventListener("click",e=>{
+  if(e.target===document.getElementById("settingsOverlay")) closeSettingsModal();
+});
 
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
+loadAIConfig();
 renderChars();
 buildSwatches();
 </script>

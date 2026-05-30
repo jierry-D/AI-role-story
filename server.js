@@ -10,22 +10,56 @@ app.use(express.static(path.join(__dirname, 'public')));
 const DATA_DIR = path.join(__dirname, 'data', 'stories');
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
+const PROVIDER_URLS = {
+  anthropic:   'https://api.anthropic.com/v1/messages',
+  openai:      'https://api.openai.com/v1/chat/completions',
+  deepseek:    'https://api.deepseek.com/v1/chat/completions',
+  gemini:      'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+  moonshot:    'https://api.moonshot.cn/v1/chat/completions',
+  qwen:        'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+  groq:        'https://api.groq.com/openai/v1/chat/completions',
+  siliconflow: 'https://api.siliconflow.cn/v1/chat/completions',
+};
+
 app.post('/api/chat', async (req, res) => {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: { message: '服务器未配置 ANTHROPIC_API_KEY，请在 .env 文件中设置' } });
+  const { provider = 'anthropic', apiKey, model, system, messages, max_tokens = 1000 } = req.body;
+
+  const key = apiKey || process.env.ANTHROPIC_API_KEY;
+  if (!key) {
+    return res.status(400).json({ error: { message: '请提供 API Key（在页面右上角 AI设置 中配置）' } });
   }
+
+  const url = PROVIDER_URLS[provider] || PROVIDER_URLS.openai;
+
   try {
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
+    let headers, body;
+
+    if (provider === 'anthropic') {
+      headers = {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
+        'x-api-key': key,
         'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify(req.body)
-    });
+      };
+      body = { model, max_tokens, system, messages };
+    } else {
+      headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${key}`
+      };
+      const oaiMessages = system
+        ? [{ role: 'system', content: system }, ...messages]
+        : messages;
+      body = { model, max_tokens, messages: oaiMessages };
+    }
+
+    const r = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
     const data = await r.json();
+
+    if (provider !== 'anthropic' && data.choices) {
+      return res.status(r.status).json({
+        content: [{ text: data.choices[0]?.message?.content || '' }]
+      });
+    }
     res.status(r.status).json(data);
   } catch (e) {
     res.status(500).json({ error: { message: e.message } });
